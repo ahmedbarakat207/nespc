@@ -226,13 +226,6 @@ void cpu6502::clock(){
         opcode = read(pc);
         
         // Debug: Print the first 100 instructions
-        static int instruction_count = 0;
-        if (instruction_count < 100) {
-            printf("CPU: PC=%04X, Opcode=%02X, A=%02X, X=%02X, Y=%02X, SP=%02X, Status=%02X\n", 
-                   pc, opcode, a, x, y, stkp, status);
-            instruction_count++;
-        }
-        
         pc++;
 
         cycles = lookup[opcode].cycles;
@@ -254,7 +247,6 @@ uint8_t cpu6502::fetch(){
 }
 
 void cpu6502::reset(){
-    printf("CPU Reset started\n");
     
     a = 0;
     x = 0;
@@ -263,22 +255,18 @@ void cpu6502::reset(){
     status = 0x00 | U;
 
     addr_abs = 0xFFFC;
-    printf("Reading reset vector from %04X\n", addr_abs);
     
     uint16_t lo = read(addr_abs + 0);
     uint16_t hi = read(addr_abs + 1);
     
-    printf("Reset vector: %02X %02X\n", lo, hi);
     
     pc = (hi << 8) | lo;
-    printf("PC set to: %04X\n", pc);
 
     addr_rel = 0x0000;
     addr_abs = 0x0000;
     fetched = 0x00;
 
     cycles = 8;
-    printf("CPU Reset completed\n");
 }
 
 void cpu6502::irq(){
@@ -304,7 +292,6 @@ void cpu6502::irq(){
 }
 
 void cpu6502::nmi(){
-    printf("NMI triggered\n");
     write(0x0100 + stkp, (pc >> 8) & 0x00FF);
     stkp--;
     write(0x0100 + stkp, pc & 0x00FF);

@@ -102,9 +102,9 @@ uint8_t cpu6502::IZY(){
     uint16_t hi = read((t + 1) & 0x00FF);
 
     addr_abs = (hi << 8) | lo;
-    addr_abs =+ y;
+    addr_abs += y;
 
-    if ((addr_abs & 0x00FF) != (hi << 8)){
+    if ((addr_abs & 0xFF00) != (hi << 8)){
         return 1;
     } else {
         return 0;

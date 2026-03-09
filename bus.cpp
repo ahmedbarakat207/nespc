@@ -1,117 +1,124 @@
 #include "bus.h"
-#include "6502.h"
-#include "ppu.h"
-#include "rom.h"
-#include <iostream>
+#include <cstdio>
+#include <cstring>
 
-
-void bus::cpuWrite(uint16_t addr, uint8_t data) {
-    //printf("Bus CPU Write: %04X = %02X\n", addr, data);
-    
-    if (cartridge && cartridge->cpuWrite(addr, data)) {
-        return;
-    }
-    
-    if (addr <= 0x1FFF) {
-        cpuRam[addr & 0x07FF] = data;
-    } else if (addr >= 0x2000 && addr <= 0x3FFF) {
-        ppu->cpuWrite(addr & 0x0007, data);
-    } else if (addr == 0x4014) {
-        handleOAMDMA(data);
-    } else if (addr >= 0x4000 && addr <= 0x401F) {
-        // APU and controller - ignore for now
-        printf("Bus: I/O Write ignored: %04X = %02X\n", addr, data);
-    } else {
-        printf("Bus: Unhandled CPU Write: %04X = %02X\n", addr, data);
-    }
-}
-uint8_t bus::cpuRead(uint16_t addr) {
-    //printf("Bus CPU Read: %04X\n", addr);
-    
-    uint8_t data = 0x00;
-    
-    // First check cartridge
-    if (cartridge && cartridge->cpuRead(addr, data)) {
-        return data;
-    }
-    
-    if (addr <= 0x1FFF) {
-        return cpuRam[addr & 0x07FF];
-    } else if (addr >= 0x2000 && addr <= 0x3FFF) {
-        return ppu->cpuRead(addr & 0x0007);
-    } else if (addr >= 0x4000 && addr <= 0x401F) {
-        // APU and controller - return 0 for now
-        return 0x00;
-    } else if (addr >= 0x4020 && addr <= 0x5FFF) {
-        // Extended ROM - not handled
-        return 0x00;
-    } else if (addr >= 0x6000 && addr <= 0x7FFF) {
-        // Cartridge RAM - not handled  
-        return 0x00;
-    } else if (addr >= 0x8000 && addr <= 0xFFFF) {
-        // This should be handled by cartridge
-        printf("Bus: Cartridge ROM Read not handled: %04X\n", addr);
-        return 0x00;
-    }
-    
-    printf("Bus: Unhandled CPU Read: %04X\n", addr);
-    return 0x00;
-}
-bus::bus() : cpuRam{} {
-    printf("Bus: Constructor started\n");
+bus::bus() {
     cpuRam.fill(0x00);
+    picture = new ppu();
     cpu.connect_bus(this);
-    ppu = new ::ppu();  // Heap allocation
-    printf("Bus: Constructor completed - CPU connected\n");
 }
 
 bus::~bus() {
-    delete ppu;
-    printf("Bus: Destructor called\n");
+    delete picture;
 }
 
-void bus::insert_cartridge(const std::shared_ptr<rom>& cartridge) {
-    printf("Bus: Inserting cartridge\n");
-    this->cartridge = cartridge;
-    ppu->connect_cartridge(cartridge);
-    printf("Bus: Cartridge inserted\n");
+void bus::insert_cartridge(const std::shared_ptr<rom> &cart) {
+    cartridge = cart;
+    picture->connect_cartridge(cart);
 }
 
 void bus::reset() {
-    printf("Bus: Reset started\n");
     cpu.reset();
-    ppu->reset();
+    picture->reset();
+    sound.reset();
     nSystemClockCounter = 0;
-    printf("Bus: Reset completed\n");
+    dma_transfer = false;
+    dma_dummy    = true;
+    dma_page     = 0;
+    dma_addr     = 0;
+    audioAccum   = 0.0;
+    audioReady   = false;
+    controller_state[0] = 0;
+    controller_state[1] = 0;
 }
 
 void bus::clock() {
-    ppu->clock();
-    
+    picture->clock();
+
     if (nSystemClockCounter % 3 == 0) {
-        cpu.clock();
+        if (dma_transfer) {
+            if (dma_dummy) {
+                if (nSystemClockCounter % 2 == 1) dma_dummy = false;
+            } else {
+                if (nSystemClockCounter % 2 == 0) {
+                    dma_data = cpuRead((uint16_t)(dma_page << 8) | dma_addr);
+                } else {
+                    picture->oam[dma_addr] = dma_data;
+                    uint8_t si = dma_addr / 4;
+                    switch (dma_addr % 4) {
+                        case 0: picture->OAM[si].y         = dma_data; break;
+                        case 1: picture->OAM[si].id        = dma_data; break;
+                        case 2: picture->OAM[si].attribute = dma_data; break;
+                        case 3: picture->OAM[si].x         = dma_data; break;
+                    }
+                    dma_addr++;
+                    if (dma_addr == 0x00) {
+                        dma_transfer = false;
+                        dma_dummy    = true;
+                    }
+                }
+            }
+        } else {
+            cpu.clock();
+        }
+
+        sound.clock();
+
+        audioAccum += SAMPLE_RATE / CPU_FREQ;
+        if (audioAccum >= 1.0) {
+            audioAccum -= 1.0;
+            audioSample = sound.getOutput();
+            audioReady  = true;
+        }
     }
-    
-    if (ppu->nmi) {
-        ppu->nmi = false;
+
+    if (picture->nmi) {
+        picture->nmi = false;
         cpu.nmi();
     }
-    
+
     nSystemClockCounter++;
 }
 
-// Update handleOAMDMA to use pointer
-void bus::handleOAMDMA(uint8_t page) {
-    printf("Bus: OAM DMA from page %02X\n", page);
-    uint16_t base_addr = page << 8;
-    
-    for (int i = 0; i < 256; i++) {
-        uint16_t src_addr = base_addr + i;
-        uint8_t data = cpuRead(src_addr);
-        
-        // Write to OAM
-        if (i < 256) {
-            ppu->oam[i] = data;
-        }
+void bus::cpuWrite(uint16_t addr, uint8_t data) {
+    if (cartridge && cartridge->cpuWrite(addr, data)) return;
+
+    if (addr <= 0x1FFF) {
+        cpuRam[addr & 0x07FF] = data;
+    } else if (addr >= 0x2000 && addr <= 0x3FFF) {
+        picture->cpuWrite(addr & 0x0007, data);
+    } else if (addr == 0x4014) {
+        dma_page     = data;
+        dma_addr     = 0x00;
+        dma_transfer = true;
+    } else if (addr == 0x4016) {
+        controller_state[0] = controller[0];
+        controller_state[1] = controller[1];
+    } else if ((addr >= 0x4000 && addr <= 0x4013) || addr == 0x4015 || addr == 0x4017) {
+        sound.cpuWrite(addr, data);
     }
+}
+
+uint8_t bus::cpuRead(uint16_t addr) {
+    uint8_t data = 0x00;
+
+    if (cartridge && cartridge->cpuRead(addr, data)) return data;
+
+    if (addr <= 0x1FFF) {
+        return cpuRam[addr & 0x07FF];
+    } else if (addr >= 0x2000 && addr <= 0x3FFF) {
+        return picture->cpuRead(addr & 0x0007);
+    } else if (addr == 0x4015) {
+        return sound.cpuRead(addr);
+    } else if (addr == 0x4016) {
+        data = (controller_state[0] & 0x80) ? 1 : 0;
+        controller_state[0] <<= 1;
+        return data;
+    } else if (addr == 0x4017) {
+        data = (controller_state[1] & 0x80) ? 1 : 0;
+        controller_state[1] <<= 1;
+        return data;
+    }
+
+    return 0x00;
 }
