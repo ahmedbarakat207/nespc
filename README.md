@@ -28,3 +28,9 @@ B : X
 RESET : r
 
 EXIT : Esc
+
+# Credits
+
+Thanks to Ahmed Shahin (https://github.com/Katziiii)
+
+for Helping on the PPU
