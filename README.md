@@ -10,12 +10,21 @@ a Full NES Emulator built from scratch in C++
 # Controls
 
 UP : up-arrow
+
 DOWN : down-arrow
+
 LEFT : left-arrow
+
 RIGHT : right-arrow
+
 START : Enter
+
 SELECT : Shift
+
 A : Z
+
 B : X
+
 RESET : r
+
 EXIT : Esc
