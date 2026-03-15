@@ -88,36 +88,33 @@ int main(int argc, char **argv) {
     bool running = true;
     SDL_Event event;
 
-    while (running) {
-        while (SDL_PollEvent(&event)) {
+    while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) running = false;
 
             if (event.type == SDL_KEYDOWN) {
-                switch (event.key.keysym.scancode) {
-                    case SDL_SCANCODE_A:      nes.controller[0] |= 0x80; break;
-                    case SDL_SCANCODE_S:      nes.controller[0] |= 0x40; break;
-                    case SDL_SCANCODE_RSHIFT: nes.controller[0] |= 0x20; break;
-                    case SDL_SCANCODE_RETURN: nes.controller[0] |= 0x10; break;
-                    case SDL_SCANCODE_UP:     nes.controller[0] |= 0x08; break;
-                    case SDL_SCANCODE_DOWN:   nes.controller[0] |= 0x04; break;
-                    case SDL_SCANCODE_LEFT:   nes.controller[0] |= 0x02; break;
-                    case SDL_SCANCODE_RIGHT:  nes.controller[0] |= 0x01; break;
-                    case SDL_SCANCODE_R:      nes.reset(); break;
-                    case SDL_SCANCODE_ESCAPE: running = false; break;
-                    default: break;
+                switch (event.key.keysym.sym) {
+                    case SDLK_z:      nes.controller[0] |= 0x80; break;
+                    case SDLK_x:      nes.controller[0] |= 0x40; break;
+                    case SDLK_RSHIFT: nes.controller[0] |= 0x20; break;
+                    case SDLK_RETURN: nes.controller[0] |= 0x10; break;
+                    case SDLK_UP:     nes.controller[0] |= 0x08; break;
+                    case SDLK_DOWN:   nes.controller[0] |= 0x04; break;
+                    case SDLK_LEFT:   nes.controller[0] |= 0x02; break;
+                    case SDLK_RIGHT:  nes.controller[0] |= 0x01; break;
+                    case SDLK_r:      nes.reset(); break;
+                    case SDLK_ESCAPE: running = false; break;
                 }
             }
             if (event.type == SDL_KEYUP) {
-                switch (event.key.keysym.scancode) {
-                    case SDL_SCANCODE_A:      nes.controller[0] &= ~0x80; break;
-                    case SDL_SCANCODE_S:      nes.controller[0] &= ~0x40; break;
-                    case SDL_SCANCODE_RSHIFT: nes.controller[0] &= ~0x20; break;
-                    case SDL_SCANCODE_RETURN: nes.controller[0] &= ~0x10; break;
-                    case SDL_SCANCODE_UP:     nes.controller[0] &= ~0x08; break;
-                    case SDL_SCANCODE_DOWN:   nes.controller[0] &= ~0x04; break;
-                    case SDL_SCANCODE_LEFT:   nes.controller[0] &= ~0x02; break;
-                    case SDL_SCANCODE_RIGHT:  nes.controller[0] &= ~0x01; break;
-                    default: break;
+                switch (event.key.keysym.sym) {
+                    case SDLK_z:      nes.controller[0] &= ~0x80; break;
+                    case SDLK_x:      nes.controller[0] &= ~0x40; break;
+                    case SDLK_RSHIFT: nes.controller[0] &= ~0x20; break;
+                    case SDLK_RETURN: nes.controller[0] &= ~0x10; break;
+                    case SDLK_UP:     nes.controller[0] &= ~0x08; break;
+                    case SDLK_DOWN:   nes.controller[0] &= ~0x04; break;
+                    case SDLK_LEFT:   nes.controller[0] &= ~0x02; break;
+                    case SDLK_RIGHT:  nes.controller[0] &= ~0x01; break;
                 }
             }
         }
