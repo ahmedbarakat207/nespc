@@ -1,6 +1,5 @@
 #include "6502.h"
 #include "bus.h"
-#include <iostream>
 
 cpu6502::~cpu6502() {}
 
@@ -9,25 +8,18 @@ uint8_t cpu6502::get_flag(FLAGS6502 flag) {
 }
 
 void cpu6502::set_flag(FLAGS6502 flag, bool value) {
-    if (value)
-        status |= flag;
-    else
-        status &= ~flag;
+    if (value) status |= flag;
+    else       status &= ~flag;
 }
 
-cpu6502::cpu6502() {
-    initializeLookupTable();
-}
+cpu6502::cpu6502() { initializeLookupTable(); }
 
 void cpu6502::initializeLookupTable() {
     using a = cpu6502;
-    
-    // Initialize all opcodes first
-    for (int i = 0; i < 256; i++) {
+
+    for (int i = 0; i < 256; i++)
         lookup[i] = { "???", &a::XXX, &a::IMP, 2 };
-    }
-    
-    // Complete the instruction set - ADD THESE
+
     lookup[0x69] = { "ADC", &a::ADC, &a::IMM, 2 };
     lookup[0x65] = { "ADC", &a::ADC, &a::ZP0, 3 };
     lookup[0x75] = { "ADC", &a::ADC, &a::ZPX, 4 };
@@ -60,6 +52,11 @@ void cpu6502::initializeLookupTable() {
     lookup[0x10] = { "BPL", &a::BPL, &a::REL, 2 };
     lookup[0x50] = { "BVC", &a::BVC, &a::REL, 2 };
     lookup[0x70] = { "BVS", &a::BVS, &a::REL, 2 };
+
+    lookup[0x24] = { "BIT", &a::BIT, &a::ZP0, 3 };
+    lookup[0x2C] = { "BIT", &a::BIT, &a::ABS, 4 };
+
+    lookup[0x00] = { "BRK", &a::BRK, &a::IMP, 7 };
 
     lookup[0x18] = { "CLC", &a::CLC, &a::IMP, 2 };
     lookup[0xD8] = { "CLD", &a::CLD, &a::IMP, 2 };
@@ -110,7 +107,6 @@ void cpu6502::initializeLookupTable() {
 
     lookup[0x4C] = { "JMP", &a::JMP, &a::ABS, 3 };
     lookup[0x6C] = { "JMP", &a::JMP, &a::IND, 5 };
-
     lookup[0x20] = { "JSR", &a::JSR, &a::ABS, 6 };
 
     lookup[0xA9] = { "LDA", &a::LDA, &a::IMM, 2 };
@@ -172,6 +168,7 @@ void cpu6502::initializeLookupTable() {
     lookup[0x60] = { "RTS", &a::RTS, &a::IMP, 6 };
 
     lookup[0xE9] = { "SBC", &a::SBC, &a::IMM, 2 };
+    lookup[0xEB] = { "SBC", &a::SBC, &a::IMM, 2 };
     lookup[0xE5] = { "SBC", &a::SBC, &a::ZP0, 3 };
     lookup[0xF5] = { "SBC", &a::SBC, &a::ZPX, 4 };
     lookup[0xED] = { "SBC", &a::SBC, &a::ABS, 4 };
@@ -208,119 +205,70 @@ void cpu6502::initializeLookupTable() {
     lookup[0x98] = { "TYA", &a::TYA, &a::IMP, 2 };
 }
 
-uint8_t cpu6502::read(uint16_t addr){
-    if (!bus) {
-        return 0x00;
-    }
-    return bus->cpuRead(addr);
-}
+uint8_t cpu6502::read(uint16_t addr)  { return bus ? bus->cpuRead(addr) : 0x00; }
+void    cpu6502::write(uint16_t addr, uint8_t data) { if (bus) bus->cpuWrite(addr, data); }
 
-void cpu6502::write(uint16_t addr, uint8_t data){
-    if (bus) {
-        bus->cpuWrite(addr, data);
-    }
-}
-
-void cpu6502::clock(){
-    if (cycles == 0){
-        opcode = read(pc);
-        
-        // Debug: Print the first 100 instructions
-        pc++;
-
+void cpu6502::clock() {
+    if (cycles == 0) {
+        opcode = read(pc++);
+        set_flag(U, true);
         cycles = lookup[opcode].cycles;
-
-        uint8_t add_cycle1 = (this->*lookup[opcode].addrmode)();
-        uint8_t add_cycle2 = (this->*lookup[opcode].operate)();
-
-        cycles += (add_cycle1 & add_cycle2);
+        uint8_t c1 = (this->*lookup[opcode].addrmode)();
+        uint8_t c2 = (this->*lookup[opcode].operate)();
+        cycles += (c1 & c2);
+        set_flag(U, true);
     }
-
     cycles--;
 }
 
-uint8_t cpu6502::fetch(){
-    if (!(lookup[opcode].addrmode == &cpu6502::IMP)){
+uint8_t cpu6502::fetch() {
+    if (lookup[opcode].addrmode != &cpu6502::IMP)
         fetched = read(addr_abs);
-    }
     return fetched;
 }
 
-void cpu6502::reset(){
-    
-    a = 0;
-    x = 0;
-    y = 0;
-    stkp = 0xFD;
+void cpu6502::reset() {
+    a = 0; x = 0; y = 0;
+    stkp   = 0xFD;
     status = 0x00 | U;
-
-    addr_abs = 0xFFFC;
-    
-    uint16_t lo = read(addr_abs + 0);
-    uint16_t hi = read(addr_abs + 1);
-    
-    
+    uint16_t lo = read(0xFFFC);
+    uint16_t hi = read(0xFFFD);
     pc = (hi << 8) | lo;
-
     addr_rel = 0x0000;
     addr_abs = 0x0000;
-    fetched = 0x00;
-
-    cycles = 8;
+    fetched  = 0x00;
+    cycles   = 8;
 }
 
-void cpu6502::irq(){
-    if (get_flag(I) == 0){
-        write(0x0100 + stkp, (pc >> 8) & 0x00FF);
-        stkp--;
-        write(0x0100 + stkp, pc & 0x00FF);
-        stkp--;
-
+void cpu6502::irq() {
+    if (get_flag(I) == 0) {
+        write(0x0100 + stkp--, (pc >> 8) & 0x00FF);
+        write(0x0100 + stkp--, pc & 0x00FF);
         set_flag(B, 0);
         set_flag(U, 1);
         set_flag(I, 1);
-        write(0x0100 + stkp, status);
-        stkp--;
-
-        addr_abs = 0xFFFE;
-        uint16_t lo = read(addr_abs + 0);
-        uint16_t hi = read(addr_abs + 1);
+        write(0x0100 + stkp--, status);
+        uint16_t lo = read(0xFFFE);
+        uint16_t hi = read(0xFFFF);
         pc = (hi << 8) | lo;
-
         cycles = 7;
     }
 }
 
-void cpu6502::nmi(){
-    write(0x0100 + stkp, (pc >> 8) & 0x00FF);
-    stkp--;
-    write(0x0100 + stkp, pc & 0x00FF);
-    stkp--;
-
+void cpu6502::nmi() {
+    write(0x0100 + stkp--, (pc >> 8) & 0x00FF);
+    write(0x0100 + stkp--, pc & 0x00FF);
     set_flag(B, 0);
     set_flag(U, 1);
     set_flag(I, 1);
-    write(0x0100 + stkp, status);
-    stkp--;
-
-    addr_abs = 0xFFFA;
-    uint16_t lo = read(addr_abs + 0);
-    uint16_t hi = read(addr_abs + 1);
+    write(0x0100 + stkp--, status);
+    uint16_t lo = read(0xFFFA);
+    uint16_t hi = read(0xFFFB);
     pc = (hi << 8) | lo;
-
     cycles = 8;
 }
 
-bool cpu6502::complete()
-{
-    return cycles == 0;
-}
-void cpu6502::push(uint8_t data) {
-    write(0x0100 + stkp, data);
-    stkp--;
-}
+bool cpu6502::complete() { return cycles == 0; }
 
-uint8_t cpu6502::pop() {
-    stkp++;
-    return read(0x0100 + stkp);
-}
+void    cpu6502::push(uint8_t data) { write(0x0100 + stkp--, data); }
+uint8_t cpu6502::pop()              { return read(0x0100 + ++stkp); }

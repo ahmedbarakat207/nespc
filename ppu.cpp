@@ -58,18 +58,18 @@ void ppu::connect_cartridge(const std::shared_ptr<rom>& cart) {
 
 void ppu::cpuWrite(uint16_t addr, uint8_t data) {
     switch (addr & 0x07) {
-        case 0: // PPUCTRL
+        case 0: 
             control.reg = data;
             tram_addr.nametable_x = control.nametable_x;
             tram_addr.nametable_y = control.nametable_y;
             break;
-        case 1: // PPUMASK
+        case 1: 
             mask.reg = data;
             break;
-        case 3: // OAMADDR
+        case 3: 
             oam_addr = data;
             break;
-        case 4: // OAMDATA
+        case 4: 
             oam[oam_addr] = data;
             {
                 uint8_t si = oam_addr / 4;
@@ -82,7 +82,7 @@ void ppu::cpuWrite(uint16_t addr, uint8_t data) {
             }
             oam_addr++;
             break;
-        case 5: // PPUSCROLL
+        case 5: 
             if (address_latch == 0) {
                 fine_x = data & 0x07;
                 tram_addr.coarse_x = data >> 3;
@@ -93,7 +93,7 @@ void ppu::cpuWrite(uint16_t addr, uint8_t data) {
                 address_latch = 0;
             }
             break;
-        case 6: // PPUADDR
+        case 6: 
             if (address_latch == 0) {
                 tram_addr.reg = (uint16_t)((data & 0x3F) << 8) | (tram_addr.reg & 0x00FF);
                 address_latch = 1;
@@ -103,7 +103,7 @@ void ppu::cpuWrite(uint16_t addr, uint8_t data) {
                 address_latch = 0;
             }
             break;
-        case 7: // PPUDATA
+        case 7: 
             ppuWrite(vram_addr.reg, data);
             vram_addr.reg += (control.increment_mode ? 32 : 1);
             break;
@@ -113,15 +113,15 @@ void ppu::cpuWrite(uint16_t addr, uint8_t data) {
 uint8_t ppu::cpuRead(uint16_t addr) {
     uint8_t data = 0x00;
     switch (addr & 0x07) {
-        case 2: // PPUSTATUS
+        case 2: 
             data = (status.reg & 0xE0) | (ppu_data_buffer & 0x1F);
             status.vertical_blank = 0;
             address_latch = 0;
             break;
-        case 4: // OAMDATA
+        case 4: 
             data = oam[oam_addr];
             break;
-        case 7: // PPUDATA
+        case 7: 
             data = ppu_data_buffer;
             ppu_data_buffer = ppuRead(vram_addr.reg);
             if (vram_addr.reg >= 0x3F00) data = ppu_data_buffer;
@@ -130,6 +130,7 @@ uint8_t ppu::cpuRead(uint16_t addr) {
     }
     return data;
 }
+
 uint8_t ppu::ppuRead(uint16_t addr, bool rdonly) {
     (void)rdonly;
     uint8_t data = 0x00;
@@ -139,24 +140,24 @@ uint8_t ppu::ppuRead(uint16_t addr, bool rdonly) {
         return data;
 
     if (addr <= 0x1FFF) {
-        // Pattern tables (CHR)
+        
         return tblPattern[(addr >> 12) & 1][addr & 0x0FFF];
     }
 
     if (addr <= 0x3EFF) {
-        // Nametables  $2000-$2FFF, mirrors at $3000-$3EFF
+        
         addr &= 0x0FFF;
         bool vert = cartridge && (cartridge->mirror == rom::MIRROR::VERTICAL);
         if (vert) {
-            // NT0/NT2 share bank 0 ($2000,$2800), NT1/NT3 share bank 1 ($2400,$2C00)
+            
             return tblName[(addr >> 10) & 1][addr & 0x03FF];
         } else {
-            // NT0/NT1 share bank 0 ($2000,$2400), NT2/NT3 share bank 1 ($2800,$2C00)
+            
             return tblName[(addr >> 11) & 1][addr & 0x03FF];
         }
     }
 
-    // Palette RAM $3F00-$3FFF
+    
     addr &= 0x001F;
     if (addr == 0x10) addr = 0x00;
     if (addr == 0x14) addr = 0x04;
@@ -187,7 +188,7 @@ void ppu::ppuWrite(uint16_t addr, uint8_t data) {
         return;
     }
 
-    // Palette RAM
+    
     addr &= 0x001F;
     if (addr == 0x10) addr = 0x00;
     if (addr == 0x14) addr = 0x04;
@@ -200,8 +201,6 @@ uint32_t ppu::GetColourFromPaletteRam(uint8_t palette, uint8_t pixel) {
     uint8_t idx = ppuRead(0x3F00 + ((palette & 0x07) << 2) + (pixel & 0x03)) & 0x3F;
     return nes_palette[idx];
 }
-
-// ── Clock ────────────────────────────────────────────────────────────────────
 
 void ppu::clock() {
 
@@ -271,11 +270,11 @@ void ppu::clock() {
         }
     };
 
-    // ── Pre-render and visible scanlines ─────────────────────────────────────
+    
     if (scanline >= -1 && scanline < 240) {
 
         if (scanline == 0 && cycle == 0)
-            cycle = 1; // odd-frame skip
+            cycle = 1; 
 
         if (scanline == -1 && cycle == 1) {
             status.vertical_blank  = 0;
@@ -323,21 +322,26 @@ void ppu::clock() {
 
         if (cycle == 256) IncrementScrollY();
         if (cycle == 257) { LoadBackgroundShifters(); TransferAddressX(); }
+        if (cycle == 260 && mask.render_background && mask.render_sprites) {
+            if (cartridge && cartridge->pMapper) {
+                cartridge->pMapper->scanline();
+            }
+        }
         if (cycle == 338 || cycle == 340)
             bg_next_tile_id = ppuRead(0x2000 | (vram_addr.reg & 0x0FFF));
         if (scanline == -1 && cycle >= 280 && cycle < 305)
             TransferAddressY();
 
-        // ── Sprite evaluation ─────────────────────────────────────────────────
+        
         if (cycle == 257 && scanline >= 0) {
             memset(spriteScanline, 0xFF, sizeof(spriteScanline));
             sprite_count = 0;
             bSpriteZeroHitPossible = false;
 
             for (uint8_t e = 0; e < 64; e++) {
-                // Sprites with Y >= $EF are off-screen / inactive — skip them
+                
                 if (OAM[e].y >= 0xEF) continue;
-                // NES sprite Y is the scanline ABOVE where it first appears (+1 offset)
+                
                 int16_t diff = (int16_t)scanline - (int16_t)(OAM[e].y + 1);
                 int16_t height = control.sprite_size ? 16 : 8;
                 if (diff >= 0 && diff < height) {
@@ -352,7 +356,7 @@ void ppu::clock() {
             }
         }
 
-        // ── Load sprite pattern shifters ──────────────────────────────────────
+        
         if (cycle == 340) {
             for (uint8_t i = 0; i < sprite_count; i++) {
                 uint8_t  sp_lo, sp_hi;
@@ -361,14 +365,14 @@ void ppu::clock() {
                 int16_t row = (int16_t)scanline - (int16_t)(spriteScanline[i].y + 1);
 
                 if (!control.sprite_size) {
-                    // 8×8
-                    if (spriteScanline[i].attribute & 0x80) row = 7 - row; // vflip
+                    
+                    if (spriteScanline[i].attribute & 0x80) row = 7 - row; 
                     addr_lo = ((uint16_t)control.pattern_sprite << 12)
                             | ((uint16_t)spriteScanline[i].id  <<  4)
                             | (uint16_t)row;
                 } else {
-                    // 8×16
-                    if (spriteScanline[i].attribute & 0x80) row = 15 - row; // vflip
+                    
+                    if (spriteScanline[i].attribute & 0x80) row = 15 - row; 
                     uint8_t tile_bank = spriteScanline[i].id & 0x01;
                     uint8_t tile_id   = spriteScanline[i].id & 0xFE;
                     if (row >= 8) { tile_id++; row -= 8; }
@@ -380,7 +384,7 @@ void ppu::clock() {
                 sp_lo = ppuRead(addr_lo);
                 sp_hi = ppuRead(addr_lo + 8);
 
-                // Horizontal flip
+                
                 if (spriteScanline[i].attribute & 0x40) {
                     auto flip = [](uint8_t b) -> uint8_t {
                         b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
@@ -398,10 +402,10 @@ void ppu::clock() {
         }
     }
 
-    // ── VBlank ───────────────────────────────────────────────────────────────
-    // Set vblank flag at cycle 1, but delay NMI by 2 PPU clocks.
-    // This gives the vblank-poll loop (LDA $2002 / BPL) a window to see bit 7
-    // before the NMI handler clears it — matching real NES timing behaviour.
+    
+    
+    
+    
     if (scanline == 241 && cycle == 1) {
         status.vertical_blank = 1;
     }
@@ -409,7 +413,7 @@ void ppu::clock() {
         if (control.enable_nmi) nmi = true;
     }
 
-    // ── Pixel composition ────────────────────────────────────────────────────
+    
     uint8_t bg_pixel = 0, bg_palette = 0;
     uint8_t fg_pixel = 0, fg_palette = 0, fg_priority = 0;
 
@@ -447,25 +451,29 @@ void ppu::clock() {
     else {
         if (fg_priority) { pixel = fg_pixel; palette = fg_palette; }
         else             { pixel = bg_pixel; palette = bg_palette; }
+    }
 
-        if (bSpriteZeroHitPossible && bSpriteZeroBeingRendered
-            && mask.render_background && mask.render_sprites) {
-            bool left_clip = mask.render_background_left && mask.render_sprites_left;
-            if (!left_clip) {
-                if (cycle >= 9  && cycle < 258) status.sprite_zero_hit = 1;
+    if (bSpriteZeroHitPossible && bSpriteZeroBeingRendered) {
+        if (mask.render_background && mask.render_sprites) {
+            if (~(mask.render_background_left | mask.render_sprites_left)) {
+                if (cycle >= 9 && cycle < 258) {
+                    status.sprite_zero_hit = 1;
+                }
             } else {
-                if (cycle >= 1  && cycle < 258) status.sprite_zero_hit = 1;
+                if (cycle >= 1 && cycle < 258) {
+                    status.sprite_zero_hit = 1;
+                }
             }
         }
     }
 
-    // Write pixel to framebuffer (only during visible area)
+    
     if (scanline >= 0 && scanline < 240 && cycle >= 1 && cycle <= 256) {
         framebuffer[(uint16_t)scanline * 256 + (uint16_t)(cycle - 1)] =
             GetColourFromPaletteRam(palette, pixel);
     }
 
-    // ── Advance counters ──────────────────────────────────────────────────────
+    
     cycle++;
     if (cycle >= 341) {
         cycle = 0;

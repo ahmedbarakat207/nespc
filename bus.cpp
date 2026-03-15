@@ -77,6 +77,11 @@ void bus::clock() {
         cpu.nmi();
     }
 
+    if (cartridge && cartridge->pMapper && cartridge->pMapper->irqState()) {
+        cartridge->pMapper->irqClear();
+        cpu.irq();
+    }
+
     nSystemClockCounter++;
 }
 

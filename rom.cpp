@@ -2,6 +2,9 @@
 #include <fstream>
 #include "rom.h"
 #include "mapper_000.h"
+#include "mapper_001.h"
+#include "mapper_003.h"
+#include "mapper_004.h"
 
 rom::rom(const std::string &filename) {
     printf("ROM: Loading file: %s\n", filename.c_str());
@@ -24,14 +27,14 @@ rom::rom(const std::string &filename) {
         throw std::runtime_error("Cannot open ROM file: " + filename);
     }
     
-    // Read header
+    
     ifs.read(reinterpret_cast<char*>(&header), sizeof(header));
     
     if (header.name[0] != 'N' || header.name[1] != 'E' || header.name[2] != 'S' || header.name[3] != 0x1A) {
         throw std::runtime_error("Invalid iNES header");
     }
 
-    // Check for trainer
+    
     bool has_trainer = (header.mapper1 & 0x04) != 0;
     if (has_trainer) {
         ifs.seekg(512, std::ios_base::cur);
@@ -46,7 +49,7 @@ rom::rom(const std::string &filename) {
     printf("ROM Info: PRG Banks: %d, CHR Banks: %d, Mapper: %d, Mirroring: %s\n", 
            prgBanks, chrBanks, mapperID, mirror == VERTICAL ? "Vertical" : "Horizontal");
 
-    // Load PRG ROM
+    
     size_t prgSize = prgBanks * 16384;
     if (prgSize > 0) {
         prgMemory.resize(prgSize);
@@ -54,10 +57,12 @@ rom::rom(const std::string &filename) {
         printf("ROM: Loaded %zu bytes of PRG ROM\n", prgSize);
     } else {
         printf("ROM: No PRG ROM found!\n");
-        prgMemory.resize(32768); // Default to 32KB
+        prgMemory.resize(32768); 
     }
 
-    // Load CHR ROM
+    prgRam.resize(8192, 0); // 8KB PRG RAM
+
+    
     size_t chrSize = chrBanks * 8192;
     if (chrSize > 0) {
         chrMemory.resize(chrSize);
@@ -65,18 +70,34 @@ rom::rom(const std::string &filename) {
         printf("ROM: Loaded %zu bytes of CHR ROM\n", chrSize);
     } else {
         printf("ROM: No CHR ROM found, using CHR RAM\n");
-        chrMemory.resize(8192); // 8KB CHR RAM
-        // Initialize with basic pattern
+        chrMemory.resize(8192); 
+        
         for (size_t i = 0; i < chrMemory.size(); i++) {
             chrMemory[i] = (i % 2 == 0) ? 0xFF : 0x00;
         }
     }
 
-    // Initialize mapper
+    
     switch (mapperID) {
         case 0:
             pMapper = std::make_shared<mapper_000>(prgBanks, chrBanks);
             printf("ROM: Mapper 000 (NROM) initialized\n");
+            break;
+        case 1:
+            pMapper = std::make_shared<mapper_001>(prgBanks, chrBanks);
+            printf("ROM: Mapper 001 (MMC1) initialized\n");
+            break;
+        case 3:
+            pMapper = std::make_shared<mapper_003>(prgBanks, chrBanks);
+            printf("ROM: Mapper 003 (CNROM) initialized\n");
+            break;
+        case 4:
+            pMapper = std::make_shared<mapper_004>(prgBanks, chrBanks);
+            pMapper->setMirroringCallback([this](uint8_t mode) {
+                // MMC3: 0 = Vertical, 1 = Horizontal
+                this->mirror = (mode == 0) ? VERTICAL : HORIZONTAL;
+            });
+            printf("ROM: Mapper 004 (MMC3) initialized\n");
             break;
         default:
             throw std::runtime_error("Unsupported mapper: " + std::to_string(mapperID));
@@ -93,13 +114,20 @@ rom::~rom() {
 bool rom::cpuRead(uint16_t addr, uint8_t &data) {
     uint32_t mapped_addr = 0;
     if (pMapper && pMapper->cpuRead(addr, mapped_addr)) {
-        if (mapped_addr < prgMemory.size()) {
+        if (mapped_addr == 0xFFFFFFFF) {
+            return false;
+        }
+        if (mapped_addr & 0x80000000) {
+            uint32_t ram_addr = mapped_addr & 0x1FFF;
+            if (ram_addr < prgRam.size()) {
+                data = prgRam[ram_addr];
+                return true;
+            }
+        } else if (mapped_addr < prgMemory.size()) {
             data = prgMemory[mapped_addr];
             return true;
         } else {
-            //printf("ROM: CPU Read out of bounds: %04X -> %08X (PRG size: %zu)\n", 
-            //       addr, mapped_addr, prgMemory.size());
-            data = 0xFF; // Return default value
+            data = 0xFF; 
             return true;
         }
     }
@@ -108,15 +136,19 @@ bool rom::cpuRead(uint16_t addr, uint8_t &data) {
 
 bool rom::cpuWrite(uint16_t addr, uint8_t data) {
     uint32_t mapped_addr = 0;
-    if (pMapper && pMapper->cpuWrite(addr, mapped_addr)) {
-        if (mapped_addr < prgMemory.size()) {
-            prgMemory[mapped_addr] = data;
-            return true;
-        } else {
-            //printf("ROM: CPU Write out of bounds: %04X -> %08X (PRG size: %zu)\n", 
-            //       addr, mapped_addr, prgMemory.size());
+    if (pMapper && pMapper->cpuWrite(addr, mapped_addr, data)) {
+        if (mapped_addr == 0xFFFFFFFF) {
             return true;
         }
+        if (mapped_addr & 0x80000000) {
+            uint32_t ram_addr = mapped_addr & 0x1FFF;
+            if (ram_addr < prgRam.size()) {
+                prgRam[ram_addr] = data;
+                return true;
+            }
+        }
+        // Do NOT overwrite ROM (prgMemory)
+        return true;
     }
     return false;
 }
@@ -128,9 +160,9 @@ bool rom::ppuRead(uint16_t addr, uint8_t &data) {
             data = chrMemory[mapped_addr];
             return true;
         } else {
-            //printf("ROM: PPU Read out of bounds: %04X -> %08X (CHR size: %zu)\n", 
-            //       addr, mapped_addr, chrMemory.size());
-            data = 0x00; // Return default value
+            
+            
+            data = 0x00; 
             return true;
         }
     }
@@ -139,13 +171,13 @@ bool rom::ppuRead(uint16_t addr, uint8_t &data) {
 
 bool rom::ppuWrite(uint16_t addr, uint8_t data) {
     uint32_t mapped_addr = 0;
-    if (pMapper && pMapper->ppuWrite(addr, mapped_addr)) {
+    if (pMapper && pMapper->ppuWrite(addr, mapped_addr, data)) {
         if (mapped_addr < chrMemory.size()) {
             chrMemory[mapped_addr] = data;
             return true;
         } else {
-            //printf("ROM: PPU Write out of bounds: %04X -> %08X (CHR size: %zu)\n", 
-            //       addr, mapped_addr, chrMemory.size());
+            
+            
             return true;
         }
     }

@@ -21,6 +21,7 @@ public:
     } mirror = HORIZONTAL;
     std::vector<uint8_t> prgMemory;
     std::vector<uint8_t> chrMemory;
+    std::vector<uint8_t> prgRam;
 
     uint8_t mapperID = 0;
     uint8_t prgBanks = 0;  
