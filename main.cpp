@@ -88,7 +88,8 @@ int main(int argc, char **argv) {
     bool running = true;
     SDL_Event event;
 
-    while (SDL_PollEvent(&event)) {
+    while (running) {
+        while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) running = false;
 
             if (event.type == SDL_KEYDOWN) {
@@ -118,6 +119,8 @@ int main(int argc, char **argv) {
                 }
             }
         }
+
+        SDL_PumpEvents();
 
         do {
             nes.clock();
