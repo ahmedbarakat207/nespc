@@ -1,8 +1,10 @@
 CXX      = g++
-CXXFLAGS = -Wall -Wextra -std=c++17 $(shell pkg-config --cflags sdl2)
-LDFLAGS  = $(shell pkg-config --libs sdl2)
+CXXFLAGS = -Wall -Wextra -std=c++17 $(shell pkg-config --cflags sdl2 SDL2_ttf)
+LDFLAGS  = $(shell pkg-config --libs sdl2 SDL2_ttf)
 
-SRCS    = main.cpp 6502.cpp address.cpp bus.cpp instruction.cpp mapper.cpp mapper_000.cpp mapper_001.cpp mapper_003.cpp mapper_004.cpp ppu.cpp rom.cpp apu.cpp
+SRCS    = main.cpp 6502.cpp address.cpp bus.cpp instruction.cpp mapper.cpp \
+          mapper_000.cpp mapper_001.cpp mapper_003.cpp mapper_004.cpp \
+          ppu.cpp rom.cpp apu.cpp config.cpp gui.cpp
 OBJDIR  = build
 OBJS    = $(SRCS:%.cpp=$(OBJDIR)/%.o)
 TARGET  = nespc

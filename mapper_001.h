@@ -10,8 +10,10 @@ public:
     bool cpuWrite(uint16_t addr, uint32_t &mapped_addr, uint8_t data) override;
     bool ppuRead(uint16_t addr, uint32_t &mapped_addr) override;
     bool ppuWrite(uint16_t addr, uint32_t &mapped_addr, uint8_t data) override;
+    void setMirroringCallback(std::function<void(uint8_t)> cb) override;
 
 private:
+    std::function<void(uint8_t)> mirrorCallback;
     uint8_t chrBank0 = 0;
     uint8_t chrBank1 = 0;
     uint8_t prgBank = 0;

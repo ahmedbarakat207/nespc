@@ -85,6 +85,14 @@ rom::rom(const std::string &filename) {
             break;
         case 1:
             pMapper = std::make_shared<mapper_001>(prgBanks, chrBanks);
+            pMapper->setMirroringCallback([this](uint8_t mode) {
+                switch(mode) {
+                    case 0: this->mirror = ONESCREEN_LO; break;
+                    case 1: this->mirror = ONESCREEN_HI; break;
+                    case 2: this->mirror = VERTICAL; break;
+                    case 3: this->mirror = HORIZONTAL; break;
+                }
+            });
             printf("ROM: Mapper 001 (MMC1) initialized\n");
             break;
         case 3:

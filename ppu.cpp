@@ -145,16 +145,19 @@ uint8_t ppu::ppuRead(uint16_t addr, bool rdonly) {
     }
 
     if (addr <= 0x3EFF) {
-        
         addr &= 0x0FFF;
-        bool vert = cartridge && (cartridge->mirror == rom::MIRROR::VERTICAL);
-        if (vert) {
-            
-            return tblName[(addr >> 10) & 1][addr & 0x03FF];
-        } else {
-            
-            return tblName[(addr >> 11) & 1][addr & 0x03FF];
+        if (cartridge) {
+            if (cartridge->mirror == rom::MIRROR::VERTICAL) {
+                return tblName[(addr >> 10) & 0x01][addr & 0x03FF];
+            } else if (cartridge->mirror == rom::MIRROR::HORIZONTAL) {
+                return tblName[(addr >> 11) & 0x01][addr & 0x03FF];
+            } else if (cartridge->mirror == rom::MIRROR::ONESCREEN_LO) {
+                return tblName[0][addr & 0x03FF];
+            } else if (cartridge->mirror == rom::MIRROR::ONESCREEN_HI) {
+                return tblName[1][addr & 0x03FF];
+            }
         }
+        return tblName[0][addr & 0x03FF];
     }
 
     
@@ -179,12 +182,19 @@ void ppu::ppuWrite(uint16_t addr, uint8_t data) {
 
     if (addr <= 0x3EFF) {
         addr &= 0x0FFF;
-        bool vert = cartridge && (cartridge->mirror == rom::MIRROR::VERTICAL);
-        if (vert) {
-            tblName[(addr >> 10) & 1][addr & 0x03FF] = data;
-        } else {
-            tblName[(addr >> 11) & 1][addr & 0x03FF] = data;
+        if (cartridge) {
+            if (cartridge->mirror == rom::MIRROR::VERTICAL) {
+                tblName[(addr >> 10) & 0x01][addr & 0x03FF] = data;
+            } else if (cartridge->mirror == rom::MIRROR::HORIZONTAL) {
+                tblName[(addr >> 11) & 0x01][addr & 0x03FF] = data;
+            } else if (cartridge->mirror == rom::MIRROR::ONESCREEN_LO) {
+                tblName[0][addr & 0x03FF] = data;
+            } else if (cartridge->mirror == rom::MIRROR::ONESCREEN_HI) {
+                tblName[1][addr & 0x03FF] = data;
+            }
+            return;
         }
+        tblName[0][addr & 0x03FF] = data;
         return;
     }
 
@@ -322,7 +332,7 @@ void ppu::clock() {
 
         if (cycle == 256) IncrementScrollY();
         if (cycle == 257) { LoadBackgroundShifters(); TransferAddressX(); }
-        if (cycle == 260 && mask.render_background && mask.render_sprites) {
+        if (cycle == 260 && scanline >= 0 && scanline < 240 && (mask.render_background || mask.render_sprites)) {
             if (cartridge && cartridge->pMapper) {
                 cartridge->pMapper->scanline();
             }
@@ -409,7 +419,7 @@ void ppu::clock() {
     if (scanline == 241 && cycle == 1) {
         status.vertical_blank = 1;
     }
-    if (scanline == 241 && cycle == 3) {
+    if (scanline == 241 && cycle == 2) {
         if (control.enable_nmi) nmi = true;
     }
 
@@ -455,7 +465,7 @@ void ppu::clock() {
 
     if (bSpriteZeroHitPossible && bSpriteZeroBeingRendered) {
         if (mask.render_background && mask.render_sprites) {
-            if (~(mask.render_background_left | mask.render_sprites_left)) {
+            if (!(mask.render_background_left && mask.render_sprites_left)) {
                 if (cycle >= 9 && cycle < 258) {
                     status.sprite_zero_hit = 1;
                 }

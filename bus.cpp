@@ -72,12 +72,12 @@ void bus::clock() {
         }
     }
 
-    if (picture->nmi) {
+    if (picture->nmi && cpu.complete()) {
         picture->nmi = false;
         cpu.nmi();
     }
 
-    if (cartridge && cartridge->pMapper && cartridge->pMapper->irqState()) {
+    if (cartridge && cartridge->pMapper && cartridge->pMapper->irqState() && cpu.complete()) {
         cartridge->pMapper->irqClear();
         cpu.irq();
     }
