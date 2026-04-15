@@ -196,4 +196,6 @@ nespc/
 
 ## License
 
-For personal use. ROM files are not included and must be obtained legally.
+For personal use.
+
+ ROM files are not included and must be obtained legally.
